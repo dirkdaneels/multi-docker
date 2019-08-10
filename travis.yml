@@ -1,0 +1,22 @@
+sudo: required
+services:
+  - docker
+
+before_install:
+  - docker build -t buzzibox/react-test -f ./client/Dockerfile.dev ./client
+
+script:
+  - docker run -e CI=true buzzibox/react-test npm test
+
+after_success:
+  - docker build -t buzzibox/multi-client ./client
+  - docker build -t buzzibox/multi-nginx ./nginx
+  - docker build -t buzzibox/multi-server ./server
+  - docker build -t buzzibox/multi-worker ./worker
+  # Log in to the docker CLI
+  - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_ID" --password-stdin
+  # Take images and push to docker hub
+  - docker push buzzibox/multi-client
+  - docker push buzzibox/multi-nginx
+  - docker push buzzibox/multi-server
+  - docker push buzzibox/multi-worker
