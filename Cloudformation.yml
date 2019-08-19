@@ -1,0 +1,171 @@
+# To do:
+# 1. Build instance name 
+# 2. Apply instance name to Elastic beanstalk
+# 3. Apply instance name to RDS
+# 4. Apply instance name to Redis
+# 5. Set up VPC
+
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Template for multi-docker environment
+
+Parameters:
+  # Environment
+  Environment: 
+    Type: String
+    Default: UAT
+    AllowedValues: 
+      - UAT
+      - PRD
+    Description: Target environment. Default is UAT
+  # Microservice
+  MicroserviceName: 
+    Type: String
+    Description: Micro service name (max 15 characters)
+    MaxLength: 15
+  SQLDatabase:
+    Type: String
+    Description: SQL Database Name
+  SQLUsername:
+    Type: String
+    Description: SQL Database Username
+  SQLPassword:
+    Type: String
+    Description: SQL Database Password (min 8 characters)
+    MinLength: 8
+    NoEcho: true 
+
+Resources:
+  # Security Group
+  MultiDockerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupName: !Join ["-", [!Ref Environment, !Ref MicroserviceName]]
+      GroupDescription: Traffic for services in multi-docker app
+      Tags:
+        - 
+          Key: "Microservice"
+          Value: !Ref MicroserviceName
+        - 
+          Key: "Environment"
+          Value: !Ref Environment
+
+  
+  MultiDockerSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupName: !Ref MultiDockerSecurityGroup
+      SourceSecurityGroupName: !Ref MultiDockerSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 6379
+
+  # Elastic Beanstalk
+  EBApplication:
+    Type: AWS::ElasticBeanstalk::Application
+    Properties:
+      ApplicationName: !Join ["-", [!Ref Environment,!Ref MicroserviceName]]
+  EBConfigurationTemplate:
+    Type: AWS::ElasticBeanstalk::ConfigurationTemplate
+    Properties:
+      ApplicationName:
+        Ref: EBApplication
+      SolutionStackName: 64bit Amazon Linux 2018.03 v2.15.2 running Multi-container Docker 18.06.1-ce (Generic)
+  EBApplicationVersion:
+    Type: AWS::ElasticBeanstalk::ApplicationVersion
+    Properties:
+      ApplicationName:
+        Ref: EBApplication
+      SourceBundle:
+        S3Bucket: !Sub "elasticbeanstalk-samples-eu-central-1"
+        S3Key: ecs-sample.zip
+  EBEnvironment:
+    Type: AWS::ElasticBeanstalk::Environment
+    Properties:
+      EnvironmentName: !Join ["-", [!Ref Environment,!Ref MicroserviceName]]
+      ApplicationName: !Ref EBApplication
+      TemplateName: !Ref EBConfigurationTemplate
+      VersionLabel: !Ref EBApplicationVersion
+      OptionSettings: 
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: IamInstanceProfile
+          Value: aws-elasticbeanstalk-ec2-role
+        - Namespace : aws:autoscaling:launchconfiguration
+          OptionName : SecurityGroups
+          Value : !Ref MultiDockerSecurityGroup
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: "REDIS_HOST"
+          Value: !GetAtt MultiDockerRedis.RedisEndpoint.Address
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: "REDIS_PORT"
+          Value: !GetAtt MultiDockerRedis.RedisEndpoint.Port
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: "PGUSER"
+          Value: !Ref SQLUsername
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: "PGHOST"
+          Value: !GetAtt MultiDockerRDS.Endpoint.Address  
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: "PGDATABASE"
+          Value: !Ref SQLDatabase 
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: "PGPASSWORD"
+          Value: !Ref SQLPassword
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: "PGPORT"
+          Value: !GetAtt MultiDockerRDS.Endpoint.Port
+      Tags:
+        - 
+          Key: "Microservice"
+          Value: !Ref MicroserviceName
+        - 
+          Key: "Environment"
+          Value: !Ref Environment
+
+  # Postgres
+  MultiDockerRDS:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: !Join ["-", [!Ref Environment,!Ref MicroserviceName]]
+      DBName: !Ref SQLDatabase
+      AllocatedStorage: '5'
+      DBInstanceClass: db.t2.micro
+      Engine: postgres
+      MasterUsername: !Ref SQLUsername
+      MasterUserPassword: !Ref SQLPassword
+      VPCSecurityGroups: 
+        - sg-f49ed79f
+        - !GetAtt MultiDockerSecurityGroup.GroupId
+      Tags:
+        - 
+          Key: "Microservice"
+          Value: !Ref MicroserviceName
+        - 
+          Key: "Environment"
+          Value: !Ref Environment
+
+  #Redis
+  MultiDockerRedis:
+    Type: AWS::ElastiCache::CacheCluster
+    Properties:
+      ClusterName: !Join ["-", [!Ref Environment,!Ref MicroserviceName]]
+      Engine: Redis
+      NumCacheNodes: 1
+      CacheNodeType: cache.t2.micro
+      VpcSecurityGroupIds: 
+        - sg-f49ed79f
+        - !GetAtt MultiDockerSecurityGroup.GroupId
+      Tags:
+        - 
+          Key: "Microservice"
+          Value: !Ref MicroserviceName
+        - 
+          Key: "Environment"
+          Value: !Ref Environment
+
+
+
+  
+
+
+  

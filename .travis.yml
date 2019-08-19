@@ -20,3 +20,17 @@ after_success:
   - docker push buzzibox/multi-nginx
   - docker push buzzibox/multi-server
   - docker push buzzibox/multi-worker
+
+deploy:
+  provider: elasticbeanstalk
+  region: "eu-central-1"
+  app: "UAT-MultiDocker"
+  env: "UAT-MultiDocker"
+  bucket_name: "elasticbeanstalk-eu-central-1-050016160943"
+  bucket_path: "docker-multi"
+  on:
+    branch: master
+  access_key_id: $AWS_ACCESS_KEY
+  secret_access_key:
+    secure: "$AWS_SECRET_KEY"  
+
